@@ -28,10 +28,11 @@ const MAX_DISHES = 3;
 
 const MESSAGES = {
   key: 'Ключ не подошёл. Проверь его в настройках.',
-  limit: 'Лимит запросов исчерпан. Попробуй через минуту.',
+  limit: 'Лимит бесплатных запросов исчерпан. Попробуй позже.',
   unavailable: 'Gemini сейчас недоступен. Попробуй позже.',
   network: 'Не достучался до Gemini. Проверь интернет; возможно, нужен VPN.',
   format: 'Не понял ответ модели. Нажми ещё раз.',
+  region: 'Gemini недоступен из твоего региона. Включи VPN и попробуй ещё раз.',
 };
 
 export class LlmError extends Error {
@@ -76,7 +77,18 @@ export function toUserError(err) {
   return { message: 'Что-то пошло не так. Нажми ещё раз.', openSettings: false };
 }
 
-function kindForStatus(status) {
+async function errorStatus(response) {
+  try {
+    return (await response.json()).error.status;
+  } catch {
+    return undefined;
+  }
+}
+
+async function kindForResponse(response) {
+  const { status } = response;
+  // Региональная блокировка приходит тем же 400, что и неверный ключ.
+  if (status === 400 && (await errorStatus(response)) === 'FAILED_PRECONDITION') return 'region';
   if (status === 400 || status === 401 || status === 403) return 'key';
   if (status === 429) return 'limit';
   return 'unavailable';
@@ -103,11 +115,12 @@ async function generate(model, { apiKey, prompt, fetchFn }) {
 export async function suggestDishes({ apiKey, prompt, fetchFn = globalThis.fetch }) {
   const request = { apiKey, prompt, fetchFn };
   let response = await generate(MODEL, request);
-  // Основная модель перегружена (503) или снята с поддержки (404).
-  if (response.status === 503 || response.status === 404) {
+  // Основная модель перегружена (503), снята с поддержки (404) или выбрала
+  // свою квоту (429) — у запасной квота отдельная.
+  if ([503, 404, 429].includes(response.status)) {
     response = await generate(FALLBACK_MODEL, request);
   }
-  if (!response.ok) throw new LlmError(kindForStatus(response.status));
+  if (!response.ok) throw new LlmError(await kindForResponse(response));
 
   let text;
   try {

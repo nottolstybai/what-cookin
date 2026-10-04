@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Что приготовить?</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Что приготовить?</h1>
+    <button id="settings-open" type="button" class="icon" aria-label="Настройки">⚙</button>
+  </header>
+
+  <main>
+    <label for="products">Что есть дома</label>
+    <textarea id="products" rows="5" placeholder="курица, рис, полбанки сметаны, лук…"></textarea>
+    <p id="products-hint" class="hint" hidden>Напиши, что есть дома</p>
+
+    <fieldset class="meal">
+      <legend>Приём пищи</legend>
+      <label><input type="radio" name="meal" value="lunch"> обед</label>
+      <label><input type="radio" name="meal" value="dinner" checked> ужин</label>
+    </fieldset>
+
+    <button id="suggest" type="button" class="primary">Что приготовить?</button>
+
+    <p id="status" class="status" role="status" hidden></p>
+    <section id="dishes" aria-live="polite"></section>
+    <button id="more" type="button" hidden>Ещё варианты</button>
+  </main>
+
+  <dialog id="settings">
+    <form id="settings-form" method="dialog">
+      <h2>Настройки</h2>
+      <label for="api-key">API-ключ Gemini</label>
+      <input id="api-key" type="password" autocomplete="off" spellcheck="false">
+      <p class="hint-link">
+        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Получить ключ в Google AI Studio</a>
+      </p>
+      <button type="submit" class="primary">Сохранить</button>
+    </form>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

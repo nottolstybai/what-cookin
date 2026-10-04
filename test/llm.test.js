@@ -83,7 +83,7 @@ test('toUserError: тексты и флаг настроек', () => {
     openSettings: true,
   });
   assert.deepEqual(toUserError(new LlmError('limit')), {
-    message: 'Лимит запросов исчерпан. Попробуй через минуту.',
+    message: 'Лимит бесплатных запросов исчерпан. Попробуй позже.',
     openSettings: false,
   });
   assert.deepEqual(toUserError(new LlmError('unavailable')), {
@@ -96,6 +96,13 @@ test('toUserError: тексты и флаг настроек', () => {
   });
   assert.deepEqual(toUserError(new LlmError('format')), {
     message: 'Не понял ответ модели. Нажми ещё раз.',
+    openSettings: false,
+  });
+});
+
+test('toUserError: region — сообщение про VPN, настройки не открываются', () => {
+  assert.deepEqual(toUserError(new LlmError('region')), {
+    message: 'Gemini недоступен из твоего региона. Включи VPN и попробуй ещё раз.',
     openSettings: false,
   });
 });
@@ -154,7 +161,7 @@ for (const [status, kind] of [
   });
 }
 
-for (const status of [503, 404]) {
+for (const status of [503, 404, 429]) {
   test(`suggestDishes: HTTP ${status} на основной модели → повтор на запасной`, async () => {
     const urls = [];
     const fetchFn = async (url) => {
@@ -183,7 +190,7 @@ test('suggestDishes: 503 на обеих моделях → unavailable, ров�
   assert.equal(calls, 2);
 });
 
-test('suggestDishes: 429 не повторяется на запасной модели', async () => {
+test('suggestDishes: 429 на обеих моделях → limit, ровно два запроса', async () => {
   let calls = 0;
   const fetchFn = async () => {
     calls += 1;
@@ -191,7 +198,46 @@ test('suggestDishes: 429 не повторяется на запасной мо�
   };
 
   await assert.rejects(suggestDishes({ apiKey: 'k', prompt: 'p', fetchFn }), { kind: 'limit' });
+  assert.equal(calls, 2);
+});
+
+test('suggestDishes: 401 не повторяется на запасной модели', async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return { ok: false, status: 401, json: async () => ({}) };
+  };
+
+  await assert.rejects(suggestDishes({ apiKey: 'k', prompt: 'p', fetchFn }), { kind: 'key' });
   assert.equal(calls, 1);
+});
+
+test('suggestDishes: HTTP 400 с блокировкой по региону → region, а не key', async () => {
+  const fetchFn = async () => ({
+    ok: false,
+    status: 400,
+    json: async () => ({
+      error: {
+        code: 400,
+        message: 'User location is not supported for the API use.',
+        status: 'FAILED_PRECONDITION',
+      },
+    }),
+  });
+
+  await assert.rejects(suggestDishes({ apiKey: 'k', prompt: 'p', fetchFn }), { kind: 'region' });
+});
+
+test('suggestDishes: HTTP 400 с нечитаемым телом → key', async () => {
+  const fetchFn = async () => ({
+    ok: false,
+    status: 400,
+    json: async () => {
+      throw new SyntaxError('Unexpected token');
+    },
+  });
+
+  await assert.rejects(suggestDishes({ apiKey: 'k', prompt: 'p', fetchFn }), { kind: 'key' });
 });
 
 test('suggestDishes: fetch бросил исключение → network', async () => {
