@@ -3,32 +3,59 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fff7ed" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1a1613" media="(prefers-color-scheme: dark)">
   <title>Что приготовить?</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header>
-    <h1>Что приготовить?</h1>
+    <div class="brand">
+      <span class="logo" aria-hidden="true">🍳</span>
+      <div>
+        <h1>Что приготовить?</h1>
+        <p class="tagline">Напиши, что есть дома — подскажу блюдо</p>
+      </div>
+    </div>
     <button id="settings-open" type="button" class="icon" aria-label="Настройки">⚙</button>
   </header>
 
   <main>
-    <label for="products">Что есть дома</label>
-    <textarea id="products" rows="5" placeholder="курица, рис, полбанки сметаны, лук…"></textarea>
-    <p id="products-hint" class="hint" hidden>Напиши, что есть дома</p>
+    <section class="panel">
+      <label for="products">Что есть дома</label>
+      <textarea id="products" rows="4" placeholder="курица, рис, полбанки сметаны, лук…"></textarea>
+      <p id="products-hint" class="hint" hidden>Напиши, что есть дома</p>
 
-    <fieldset class="meal">
-      <legend>Приём пищи</legend>
-      <label><input type="radio" name="meal" value="lunch"> обед</label>
-      <label><input type="radio" name="meal" value="dinner" checked> ужин</label>
-    </fieldset>
+      <div class="meal" role="radiogroup" aria-label="Приём пищи">
+        <label><input type="radio" name="meal" value="lunch"><span>Обед</span></label>
+        <label><input type="radio" name="meal" value="dinner" checked><span>Ужин</span></label>
+      </div>
 
-    <button id="suggest" type="button" class="primary">Что приготовить?</button>
+      <button id="suggest" type="button" class="primary">Что приготовить?</button>
+    </section>
 
-    <p id="status" class="status" role="status" hidden></p>
     <section id="dishes" aria-live="polite"></section>
-    <button id="more" type="button" hidden>Ещё варианты</button>
+    <p id="status" class="status" role="status" hidden></p>
+    <button id="more" type="button" class="secondary" hidden>Ещё варианты</button>
   </main>
+
+  <dialog id="dish-dialog" aria-labelledby="dish-title">
+    <button id="dish-close" type="button" class="icon close" aria-label="Закрыть">✕</button>
+    <h2 id="dish-title"></h2>
+    <p id="dish-time" class="time"></p>
+    <section id="dish-uses-block">
+      <h3>Из твоего</h3>
+      <ul id="dish-uses" class="chips"></ul>
+    </section>
+    <section id="dish-missing-block">
+      <h3>Не хватает</h3>
+      <ul id="dish-missing" class="chips chips-missing"></ul>
+    </section>
+    <section>
+      <h3>Как готовить</h3>
+      <ol id="dish-steps" class="steps"></ol>
+    </section>
+  </dialog>
 
   <dialog id="settings">
     <form id="settings-form" method="dialog">

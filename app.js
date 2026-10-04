@@ -13,6 +13,14 @@ const dishesEl = document.getElementById('dishes');
 const settingsEl = document.getElementById('settings');
 const settingsFormEl = document.getElementById('settings-form');
 const apiKeyEl = document.getElementById('api-key');
+const dishDialogEl = document.getElementById('dish-dialog');
+const dishTitleEl = document.getElementById('dish-title');
+const dishTimeEl = document.getElementById('dish-time');
+const dishUsesBlockEl = document.getElementById('dish-uses-block');
+const dishUsesEl = document.getElementById('dish-uses');
+const dishMissingBlockEl = document.getElementById('dish-missing-block');
+const dishMissingEl = document.getElementById('dish-missing');
+const dishStepsEl = document.getElementById('dish-steps');
 
 // Названия уже показанных блюд для текущей пары «продукты + приём пищи».
 let exclude = [];
@@ -27,8 +35,9 @@ function openSettings() {
   if (!settingsEl.open) settingsEl.showModal();
 }
 
-function showStatus(text) {
+function showStatus(text, kind) {
   statusEl.textContent = text;
+  statusEl.className = `status ${kind}`;
   statusEl.hidden = false;
   statusEl.scrollIntoView({ block: 'nearest' });
 }
@@ -45,23 +54,42 @@ function element(tag, className, text) {
   return el;
 }
 
+function fillList(listEl, items) {
+  listEl.replaceChildren(...items.map((item) => element('li', '', item)));
+}
+
+function openDish(dish) {
+  dishTitleEl.textContent = dish.name;
+  dishTimeEl.textContent = dish.minutes === null ? '' : `⏱ ${dish.minutes} мин`;
+  dishTimeEl.hidden = dish.minutes === null;
+  fillList(dishUsesEl, dish.uses);
+  dishUsesBlockEl.hidden = dish.uses.length === 0;
+  fillList(dishMissingEl, dish.missing);
+  dishMissingBlockEl.hidden = dish.missing.length === 0;
+  fillList(dishStepsEl, dish.steps);
+  dishDialogEl.showModal();
+  dishDialogEl.scrollTop = 0;
+}
+
+// Карточка — только главное; всё остальное в попапе по нажатию.
 function renderDish(dish) {
-  const card = element('article', 'dish');
-  card.append(element('h2', '', dish.name));
+  const card = element('button', 'dish');
+  card.type = 'button';
+  card.append(element('span', 'dish-name', dish.name));
+  card.append(element('span', 'dish-arrow', '›'));
+
+  const meta = element('span', 'dish-meta');
   if (dish.minutes !== null) {
-    card.append(element('p', 'meta', `${dish.minutes} мин`));
+    meta.append(element('span', '', `⏱ ${dish.minutes} мин`));
   }
-  if (dish.uses.length > 0) {
-    card.append(element('p', '', `Из твоего: ${dish.uses.join(', ')}`));
-  }
-  if (dish.missing.length > 0) {
-    card.append(element('p', '', `Не хватает: ${dish.missing.join(', ')}`));
-  }
-  const steps = element('ol');
-  for (const step of dish.steps) {
-    steps.append(element('li', '', step));
-  }
-  card.append(steps);
+  meta.append(
+    dish.missing.length === 0
+      ? element('span', 'badge badge-ok', 'всё есть дома')
+      : element('span', 'badge badge-missing', `докупить: ${dish.missing.length}`),
+  );
+  card.append(meta);
+
+  card.addEventListener('click', () => openDish(dish));
   return card;
 }
 
@@ -83,12 +111,16 @@ async function run() {
 
   const meal = selectedMeal();
   const signature = `${meal}\n${products}`;
-  const changed = signature !== lastSignature;
-  if (changed) exclude = [];
+  // Новые продукты или приём пищи — прежние карточки уже не к месту.
+  if (signature !== lastSignature) {
+    exclude = [];
+    dishesEl.replaceChildren();
+    moreEl.hidden = true;
+  }
   lastSignature = signature;
 
   setBusy(true);
-  showStatus('Думаю…');
+  showStatus('Думаю…', 'loading');
   try {
     const dishes = await suggestDishes({
       apiKey,
@@ -96,12 +128,12 @@ async function run() {
     });
     exclude = exclude.concat(dishes.map((dish) => dish.name));
     statusEl.hidden = true;
-    dishesEl.replaceChildren(...dishes.map(renderDish));
+    const cards = dishes.map(renderDish);
+    dishesEl.append(...cards);
+    cards[0].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   } catch (err) {
     const { message, openSettings: needsKey } = toUserError(err);
-    // Карточки для тех же продуктов остаются: рецепт не должен пропасть из-за сбоя.
-    if (changed) dishesEl.replaceChildren();
-    showStatus(message);
+    showStatus(message, 'error');
     if (needsKey) openSettings();
   } finally {
     moreEl.hidden = exclude.length === 0;
@@ -117,6 +149,17 @@ productsEl.addEventListener('input', () => {
 document.getElementById('settings-open').addEventListener('click', openSettings);
 settingsFormEl.addEventListener('submit', () => {
   storage.setApiKey(apiKeyEl.value.trim());
+});
+document.getElementById('dish-close').addEventListener('click', () => dishDialogEl.close());
+// Нажатие мимо содержимого попапа (по затемнению) закрывает его.
+dishDialogEl.addEventListener('click', (event) => {
+  const box = dishDialogEl.getBoundingClientRect();
+  const inside =
+    event.clientX >= box.left &&
+    event.clientX <= box.right &&
+    event.clientY >= box.top &&
+    event.clientY <= box.bottom;
+  if (!inside) dishDialogEl.close();
 });
 
 productsEl.value = storage.getProducts();
