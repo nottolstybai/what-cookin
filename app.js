@@ -30,6 +30,7 @@ function openSettings() {
 function showStatus(text) {
   statusEl.textContent = text;
   statusEl.hidden = false;
+  statusEl.scrollIntoView({ block: 'nearest' });
 }
 
 function setBusy(busy) {
@@ -64,7 +65,7 @@ function renderDish(dish) {
   return card;
 }
 
-async function run(more) {
+async function run() {
   const products = productsEl.value.trim();
   if (products === '') {
     hintEl.hidden = false;
@@ -82,7 +83,8 @@ async function run(more) {
 
   const meal = selectedMeal();
   const signature = `${meal}\n${products}`;
-  if (!more || signature !== lastSignature) exclude = [];
+  const changed = signature !== lastSignature;
+  if (changed) exclude = [];
   lastSignature = signature;
 
   setBusy(true);
@@ -97,7 +99,8 @@ async function run(more) {
     dishesEl.replaceChildren(...dishes.map(renderDish));
   } catch (err) {
     const { message, openSettings: needsKey } = toUserError(err);
-    dishesEl.replaceChildren();
+    // Карточки для тех же продуктов остаются: рецепт не должен пропасть из-за сбоя.
+    if (changed) dishesEl.replaceChildren();
     showStatus(message);
     if (needsKey) openSettings();
   } finally {
@@ -106,8 +109,8 @@ async function run(more) {
   }
 }
 
-suggestEl.addEventListener('click', () => run(false));
-moreEl.addEventListener('click', () => run(true));
+suggestEl.addEventListener('click', run);
+moreEl.addEventListener('click', run);
 productsEl.addEventListener('input', () => {
   hintEl.hidden = true;
 });

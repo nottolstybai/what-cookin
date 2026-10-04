@@ -133,6 +133,26 @@ test('suggestDishes: отправляет ключ и промпт, возвра
   assert.equal(body.generationConfig.responseMimeType, 'application/json');
 });
 
+test('suggestDishes: запрос уходит с сигналом таймаута', async () => {
+  let seenSignal;
+  const fetchFn = async (url, options) => {
+    seenSignal = options.signal;
+    return okResponse(JSON.stringify([dish]));
+  };
+
+  await suggestDishes({ apiKey: 'k', prompt: 'p', fetchFn });
+
+  assert.ok(seenSignal instanceof AbortSignal);
+});
+
+test('suggestDishes: fetch прерван по таймауту → network', async () => {
+  const fetchFn = async () => {
+    throw new DOMException('The operation timed out.', 'TimeoutError');
+  };
+
+  await assert.rejects(suggestDishes({ apiKey: 'k', prompt: 'p', fetchFn }), { kind: 'network' });
+});
+
 test('suggestDishes: ключ не попадает в URL', async () => {
   let seenUrl = '';
   const fetchFn = async (url) => {

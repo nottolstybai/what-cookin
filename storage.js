@@ -10,18 +10,21 @@ function defaultStore() {
 }
 
 export function createStorage(store = defaultStore()) {
+  // Запасная память на случай недоступного хранилища: живёт до перезагрузки.
+  const memory = new Map();
   const read = (key) => {
     try {
-      return store.getItem(key) ?? '';
+      return store.getItem(key) ?? memory.get(key) ?? '';
     } catch {
-      return '';
+      return memory.get(key) ?? '';
     }
   };
   const write = (key, value) => {
+    memory.set(key, value);
     try {
       store.setItem(key, value);
     } catch {
-      // хранилище недоступно — работаем без запоминания
+      // хранилище недоступно — значение остаётся только в памяти
     }
   };
 

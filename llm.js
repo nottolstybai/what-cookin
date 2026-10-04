@@ -25,6 +25,7 @@ const RESPONSE_SCHEMA = {
 };
 
 const MAX_DISHES = 3;
+const TIMEOUT_MS = 45000;
 
 const MESSAGES = {
   key: 'Ключ не подошёл. Проверь его в настройках.',
@@ -99,6 +100,7 @@ async function generate(model, { apiKey, prompt, fetchFn }) {
     return await fetchFn(endpoint(model), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {

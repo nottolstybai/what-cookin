@@ -43,20 +43,27 @@ test('значения переживают пересоздание обёрт�
   assert.equal(createStorage(store).getProducts(), 'яйца');
 });
 
-test('сломанное хранилище не бросает исключений', () => {
+test('сломанное хранилище: пустые строки до записи', () => {
   const storage = createStorage(brokenStore);
-
-  storage.setApiKey('k');
-  storage.setProducts('p');
 
   assert.equal(storage.getApiKey(), '');
   assert.equal(storage.getProducts(), '');
 });
 
-test('отсутствующее хранилище не бросает исключений', () => {
+test('сломанное хранилище: значения живут в памяти до перезагрузки', () => {
+  const storage = createStorage(brokenStore);
+
+  storage.setApiKey('k');
+  storage.setProducts('p');
+
+  assert.equal(storage.getApiKey(), 'k');
+  assert.equal(storage.getProducts(), 'p');
+});
+
+test('отсутствующее хранилище: значения живут в памяти', () => {
   const storage = createStorage(undefined);
 
   storage.setApiKey('k');
 
-  assert.equal(storage.getApiKey(), '');
+  assert.equal(storage.getApiKey(), 'k');
 });
