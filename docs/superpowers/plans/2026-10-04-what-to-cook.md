@@ -194,7 +194,8 @@ git commit -m "Add prompt builder"
 **Interfaces:**
 - Consumes: ничего.
 - Produces:
-  - `MODEL: string` — имя модели.
+  - `MODEL: string` — основная модель (`gemini-flash-latest`).
+  - `FALLBACK_MODEL: string` — запасная (`gemini-flash-lite-latest`); один повтор на ней при HTTP 503 или 404 от основной.
   - `class LlmError extends Error` с полем `kind: 'key' | 'limit' | 'unavailable' | 'network' | 'format'`.
   - `parseDishes(text: string): Dish[]` — бросает `LlmError('format')`.
   - `toUserError(err: unknown): { message: string, openSettings: boolean }`.
@@ -208,7 +209,7 @@ git commit -m "Add prompt builder"
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MODEL, LlmError, parseDishes, toUserError, suggestDishes } from '../llm.js';
+import { MODEL, FALLBACK_MODEL, LlmError, parseDishes, toUserError, suggestDishes } from '../llm.js';
 
 const dish = {
   name: 'Плов',
@@ -362,6 +363,46 @@ for (const [status, kind] of [
   });
 }
 
+for (const status of [503, 404]) {
+  test(`suggestDishes: HTTP ${status} на основной модели → повтор на запасной`, async () => {
+    const urls = [];
+    const fetchFn = async (url) => {
+      urls.push(url);
+      if (urls.length === 1) return { ok: false, status, json: async () => ({}) };
+      return okResponse(JSON.stringify([dish]));
+    };
+
+    const dishes = await suggestDishes({ apiKey: 'k', prompt: 'p', fetchFn });
+
+    assert.deepEqual(dishes, [dish]);
+    assert.equal(urls.length, 2);
+    assert.ok(urls[0].includes(`/models/${MODEL}:generateContent`));
+    assert.ok(urls[1].includes(`/models/${FALLBACK_MODEL}:generateContent`));
+  });
+}
+
+test('suggestDishes: 503 на обеих моделях → unavailable, ровно два запроса', async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return { ok: false, status: 503, json: async () => ({}) };
+  };
+
+  await assert.rejects(suggestDishes({ apiKey: 'k', prompt: 'p', fetchFn }), { kind: 'unavailable' });
+  assert.equal(calls, 2);
+});
+
+test('suggestDishes: 429 не повторяется на запасной модели', async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return { ok: false, status: 429, json: async () => ({}) };
+  };
+
+  await assert.rejects(suggestDishes({ apiKey: 'k', prompt: 'p', fetchFn }), { kind: 'limit' });
+  assert.equal(calls, 1);
+});
+
 test('suggestDishes: fetch бросил исключение → network', async () => {
   const fetchFn = async () => {
     throw new TypeError('Failed to fetch');
@@ -403,9 +444,12 @@ Expected: FAIL — `Cannot find module` для `../llm.js`.
 `llm.js`:
 
 ```js
-export const MODEL = 'gemini-2.5-flash';
+// Алиасы: Google сам переключает их на актуальные версии.
+export const MODEL = 'gemini-flash-latest';
+export const FALLBACK_MODEL = 'gemini-flash-lite-latest';
 
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+const endpoint = (model) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
 const STRING_LIST = { type: 'ARRAY', items: { type: 'STRING' } };
 
@@ -484,10 +528,9 @@ function kindForStatus(status) {
   return 'unavailable';
 }
 
-export async function suggestDishes({ apiKey, prompt, fetchFn = globalThis.fetch }) {
-  let response;
+async function generate(model, { apiKey, prompt, fetchFn }) {
   try {
-    response = await fetchFn(ENDPOINT, {
+    return await fetchFn(endpoint(model), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
@@ -500,6 +543,15 @@ export async function suggestDishes({ apiKey, prompt, fetchFn = globalThis.fetch
     });
   } catch {
     throw new LlmError('network');
+  }
+}
+
+export async function suggestDishes({ apiKey, prompt, fetchFn = globalThis.fetch }) {
+  const request = { apiKey, prompt, fetchFn };
+  let response = await generate(MODEL, request);
+  // Основная модель перегружена (503) или снята с поддержки (404).
+  if (response.status === 503 || response.status === 404) {
+    response = await generate(FALLBACK_MODEL, request);
   }
   if (!response.ok) throw new LlmError(kindForStatus(response.status));
 
@@ -518,7 +570,7 @@ export async function suggestDishes({ apiKey, prompt, fetchFn = globalThis.fetch
 - [ ] **Step 4: Запустить тесты, убедиться что проходят**
 
 Run: `node --test test/llm.test.js`
-Expected: PASS, 25 тестов.
+Expected: PASS, 29 тестов.
 
 - [ ] **Step 5: Commit**
 
@@ -1078,7 +1130,7 @@ if (storage.getApiKey() === '') openSettings();
 - [ ] **Step 4: Прогнать все автотесты**
 
 Run: `node --test`
-Expected: PASS, 38 тестов (8 + 25 + 5). Проверяет, что добавление страницы ничего не сломало в модулях.
+Expected: PASS, 42 теста (8 + 29 + 5). Проверяет, что добавление страницы ничего не сломало в модулях.
 
 - [ ] **Step 5: Ручная проверка в браузере**
 
@@ -1100,9 +1152,9 @@ Run: `python3 -m http.server 8000` (из корня репозитория), о�
 8. Шестерёнка → ввести заведомо неверный ключ `abc` → сохранить → запрос → «Ключ не подошёл. Проверь его в настройках.» и открывается диалог. Вернуть верный ключ.
 9. DevTools → Network → Offline → запрос → «Не достучался до Gemini. Проверь интернет; возможно, нужен VPN.» Кнопка снова активна.
 10. Сузить окно до 360px (или режим телефона в DevTools) — ничего не вылезает за край, кнопки нажимаются пальцем.
-11. Если на шаге 4 пришло «Gemini сейчас недоступен» при рабочем интернете — проверить, что модель `MODEL` из `llm.js` ещё существует:
+11. Если на шаге 4 пришло «Gemini сейчас недоступен» при рабочем интернете — проверить, что алиасы `MODEL` и `FALLBACK_MODEL` из `llm.js` ещё существуют:
     `curl -s -H "x-goog-api-key: $KEY" https://generativelanguage.googleapis.com/v1beta/models | grep '"name"'`
-    и заменить константу `MODEL` на актуальную бесплатную Flash-модель из списка; поправить, прогнать `node --test`.
+    и заменить константы на актуальные бесплатные Flash-модели из списка; прогнать `node --test`.
 
 - [ ] **Step 6: Commit**
 
